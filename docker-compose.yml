@@ -1,4 +1,3 @@
-version: '3'
 services:
   grafana_relay:
     container_name: grafana_relay
