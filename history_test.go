@@ -68,6 +68,151 @@ func TestHistoryStoreRejectsInvalidConfigurationAndCorruptData(t *testing.T) {
 	}
 }
 
+func TestHistoryStoreLoadsLegacyRecordsAndPersistsSeenState(t *testing.T) {
+	filePath := filepath.Join(t.TempDir(), "notifications.json")
+	legacy := `[{
+		"id":"legacy",
+		"receivedAt":"2026-08-07T12:00:00Z",
+		"delivered":true,
+		"alert":{"title":"Legacy alert","ruleId":42,"state":"alerting"}
+	}]`
+	if err := os.WriteFile(filePath, []byte(legacy), 0600); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+
+	store, err := newHistoryStore(filePath, 10)
+	if err != nil {
+		t.Fatalf("newHistoryStore() error = %v", err)
+	}
+	records := store.List(10)
+	if len(records) != 1 || records[0].Seen || records[0].GroupKey == "" {
+		t.Fatalf("legacy record after load = %#v", records)
+	}
+
+	updated, err := store.MarkSeen([]string{"legacy"}, false)
+	if err != nil {
+		t.Fatalf("MarkSeen() error = %v", err)
+	}
+	if updated != 1 {
+		t.Fatalf("MarkSeen() updated = %d, want 1", updated)
+	}
+
+	reloaded, err := newHistoryStore(filePath, 10)
+	if err != nil {
+		t.Fatalf("reload error = %v", err)
+	}
+	reloadedRecords := reloaded.List(10)
+	if len(reloadedRecords) != 1 || !reloadedRecords[0].Seen || reloadedRecords[0].GroupKey == "" {
+		t.Fatalf("record after reload = %#v", reloadedRecords)
+	}
+}
+
+func TestHistoryStoreMarksSelectedAndAllRecordsSeen(t *testing.T) {
+	store, err := newHistoryStore("", 10)
+	if err != nil {
+		t.Fatalf("newHistoryStore() error = %v", err)
+	}
+	for _, id := range []string{"one", "two", "three"} {
+		if err := store.Add(NotificationRecord{ID: id, ReceivedAt: time.Now(), Alert: GrafanaJson{RuleID: 1}}); err != nil {
+			t.Fatalf("Add(%s) error = %v", id, err)
+		}
+	}
+
+	updated, err := store.MarkSeen([]string{"one", "two", "missing", "one"}, false)
+	if err != nil || updated != 2 {
+		t.Fatalf("MarkSeen(selected) = %d, %v; want 2, nil", updated, err)
+	}
+	updated, err = store.MarkSeen([]string{"one"}, false)
+	if err != nil || updated != 0 {
+		t.Fatalf("repeated MarkSeen() = %d, %v; want 0, nil", updated, err)
+	}
+	updated, err = store.MarkSeen(nil, true)
+	if err != nil || updated != 1 {
+		t.Fatalf("MarkSeen(all) = %d, %v; want 1, nil", updated, err)
+	}
+	for _, record := range store.List(10) {
+		if !record.Seen {
+			t.Fatalf("record %q remains unseen", record.ID)
+		}
+	}
+}
+
+func TestHistoryStoreRollsBackSeenStateWhenPersistenceFails(t *testing.T) {
+	store, err := newHistoryStore("", 10)
+	if err != nil {
+		t.Fatalf("newHistoryStore() error = %v", err)
+	}
+	if err := store.Add(NotificationRecord{ID: "one", ReceivedAt: time.Now()}); err != nil {
+		t.Fatalf("Add() error = %v", err)
+	}
+
+	blockingPath := filepath.Join(t.TempDir(), "not-a-directory")
+	if err := os.WriteFile(blockingPath, []byte("block"), 0600); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+	store.filePath = filepath.Join(blockingPath, "notifications.json")
+	updated, err := store.MarkSeen([]string{"one"}, false)
+	if err == nil || updated != 0 {
+		t.Fatalf("MarkSeen() = %d, %v; want 0 and persistence error", updated, err)
+	}
+	if store.List(1)[0].Seen {
+		t.Fatal("record stayed seen after persistence failure")
+	}
+}
+
+func TestNotificationGroupKeyCombinesRepeatedRuleOccurrences(t *testing.T) {
+	first := GrafanaJson{
+		Title:    "Basement humidity",
+		Message:  "Humidity is 76%",
+		RuleID:   42,
+		RuleName: "High humidity",
+		State:    "ALERTING",
+		OrgID:    1,
+		ImageURL: "https://grafana.example/first.png",
+		Tags:     map[string]interface{}{"room": "basement"},
+		EvalMatches: []GrafanaEvalMatch{{
+			Value:  76.0,
+			Metric: "humidity",
+			Tags:   map[string]interface{}{"sensor": "one"},
+		}},
+	}
+	second := first
+	second.Title = "A changed display title"
+	second.Message = "Humidity is now 81%"
+	second.ImageURL = "https://grafana.example/second.png"
+	second.EvalMatches = []GrafanaEvalMatch{{
+		Value:  81.0,
+		Metric: " humidity ",
+		Tags:   map[string]interface{}{"sensor": "one"},
+	}}
+
+	firstKey, err := notificationGroupKey(first)
+	if err != nil {
+		t.Fatalf("notificationGroupKey(first) error = %v", err)
+	}
+	secondKey, err := notificationGroupKey(second)
+	if err != nil {
+		t.Fatalf("notificationGroupKey(second) error = %v", err)
+	}
+	if firstKey != secondKey {
+		t.Fatalf("repeat keys differ: %q != %q", firstKey, secondKey)
+	}
+
+	resolved := second
+	resolved.State = "ok"
+	resolvedKey, _ := notificationGroupKey(resolved)
+	if resolvedKey == firstKey {
+		t.Fatal("resolved and alerting occurrences were grouped together")
+	}
+
+	differentLabels := second
+	differentLabels.Tags = map[string]interface{}{"room": "attic"}
+	differentKey, _ := notificationGroupKey(differentLabels)
+	if differentKey == firstKey {
+		t.Fatal("different alert label sets were grouped together")
+	}
+}
+
 func TestHistoryStoreSupportsConcurrentAdds(t *testing.T) {
 	store, err := newHistoryStore("", 25)
 	if err != nil {

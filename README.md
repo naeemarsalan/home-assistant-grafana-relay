@@ -40,10 +40,16 @@ writable by the relay user. Writes use a private, atomically replaced file.
 
 ### Notification history UI
 
-Visit `http://relay-host:12000/`. The page refreshes every 30 seconds and does not truncate
-notification text. Alert image and rule URLs are links; images are not fetched automatically.
-The underlying read-only JSON endpoint is `GET /api/notifications`, and `GET /healthz` is
-available for health checks.
+Visit `http://relay-host:12000/`. Repeated occurrences of the same Grafana rule, state, and
+label set are grouped into one collapsed row. Select a row to expand its complete occurrence
+history. Seen state is persisted with the history; each group has a mark-seen action and a
+bulk action appears when multiple visible groups are unseen. The page refreshes every 30
+seconds and does not truncate expanded notification text. Alert image and rule URLs are
+links; images are not fetched automatically.
+
+The history endpoint is `GET /api/notifications`. The UI persists seen state through
+`PATCH /api/notifications` with either `{"ids":["history-id"]}` or `{"all":true}`.
+`GET /healthz` is available for health checks.
 
 The UI is unauthenticated unless both `WEB_UI_USERNAME` and `WEB_UI_PASSWORD` are set. Do
 not expose the relay directly to the internet. Bind it to a trusted interface, use the UI
