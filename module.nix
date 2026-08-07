@@ -28,7 +28,7 @@ in {
     };
 
     envFile = mkOption {
-      type = types.str;
+      type = types.nullOr types.str;
       default = null;
       example = "/var/secrets/ha-envfile";
       description = ''
@@ -36,6 +36,20 @@ in {
         e.g. containing the long-lived access token as:
         AUTH_TOKEN="LONG_LIVED_ACCESS_TOKEN"
       '';
+    };
+
+    historyFile = mkOption {
+      type = types.str;
+      default = "/var/lib/ha-relay/notifications.json";
+      example = "/var/lib/ha-relay/notifications.json";
+      description = "File used to persist notification history";
+    };
+
+    historyLimit = mkOption {
+      type = types.ints.positive;
+      default = 200;
+      example = 500;
+      description = "Maximum number of notifications retained";
     };
   };
 
@@ -58,14 +72,18 @@ in {
       description = "Start ha-relay";
       serviceConfig = {
 
-        EnvironmentFile = [ cfg.envFile ];
+        EnvironmentFile = optional (cfg.envFile != null) cfg.envFile;
         Environment = [
           "HM_SERVICE_URI='${cfg.haUri}'"
           "LISTEN_PORT='${cfg.listenPort}'"
           "LISTEN_HOST='${cfg.listenHost}'"
+          "HISTORY_FILE=${cfg.historyFile}"
+          "HISTORY_LIMIT=${toString cfg.historyLimit}"
         ];
 
         User = "ha-relay";
+        StateDirectory = "ha-relay";
+        StateDirectoryMode = "0700";
         ExecStart = "${inputs.ha-relay.packages."${config.nixpkgs.system}".ha-relay}/bin/home-assistant-grafana-relay";
         Restart = "on-failure";
         RestartSec = "5s";
