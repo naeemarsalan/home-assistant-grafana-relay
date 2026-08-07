@@ -113,6 +113,20 @@
     button:active { transform: translateY(1px); }
     button:disabled { cursor: wait; opacity: 0.65; }
 
+    .header-actions {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+      gap: 9px;
+    }
+
+    #mark-all {
+      border-color: var(--ok);
+      color: var(--ok);
+    }
+
+    #mark-all[hidden] { display: none; }
+
     .toolbar {
       display: grid;
       grid-template-columns: minmax(0, 1fr) minmax(150px, 210px);
@@ -148,6 +162,7 @@
     input:focus,
     select:focus,
     button:focus-visible,
+    summary:focus-visible,
     a:focus-visible {
       outline: 3px solid color-mix(in srgb, var(--accent) 35%, transparent);
       outline-offset: 2px;
@@ -183,17 +198,124 @@
     .notification[data-state="alerting"] { border-left-color: var(--error); }
     .notification[data-state="pending"] { border-left-color: var(--warn); }
 
-    .card-body { padding: 20px 22px 18px; }
+    .notification[data-seen="true"] { box-shadow: none; }
 
-    .card-heading {
+    .group-summary {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 16px;
+      padding: 18px 20px;
+      color: var(--text);
+      cursor: pointer;
+      list-style: none;
+      user-select: none;
+    }
+
+    .group-summary::-webkit-details-marker { display: none; }
+
+    .group-summary-main {
+      display: block;
+      min-width: 0;
+    }
+
+    .group-summary-side {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .group-title-row {
       display: flex;
       align-items: flex-start;
       justify-content: space-between;
-      gap: 16px;
+      gap: 14px;
+    }
+
+    .group-title-block { display: block; }
+
+    .preview {
+      display: block;
+      overflow: hidden;
+      margin: 7px 0 0;
+      color: var(--muted);
+      font-size: 0.9rem;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .disclosure-icon {
+      color: var(--muted);
+      font-size: 1.2rem;
+      line-height: 1;
+      transition: transform 140ms ease;
+    }
+
+    .notification[open] .disclosure-icon { transform: rotate(90deg); }
+
+    .group-content {
+      padding: 16px 20px 20px;
+      border-top: 1px solid var(--border);
+      background: var(--surface-subtle);
+    }
+
+    .group-actions {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 14px;
       margin-bottom: 12px;
     }
 
-    h2 {
+    .group-actions p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 0.84rem;
+    }
+
+    .mark-seen {
+      border-color: var(--ok);
+      color: var(--ok);
+      flex: 0 0 auto;
+    }
+
+    .occurrences {
+      display: grid;
+      gap: 10px;
+    }
+
+    .occurrence {
+      overflow: hidden;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      background: var(--surface);
+    }
+
+    .occurrence > summary {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 11px 13px;
+      color: var(--text);
+      cursor: pointer;
+      font-size: 0.84rem;
+      font-weight: 700;
+    }
+
+    .occurrence-summary-label {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .occurrence-body {
+      padding: 14px;
+      border-top: 1px solid var(--border);
+    }
+
+    .group-title {
+      display: block;
       margin: 0;
       font-size: 1.1rem;
       line-height: 1.35;
@@ -201,6 +323,7 @@
     }
 
     .time {
+      display: block;
       margin: 4px 0 0;
       color: var(--muted);
       font-size: 0.82rem;
@@ -230,6 +353,8 @@
 
     .badge.delivered { background: var(--ok-soft); color: var(--ok); }
     .badge.failed { background: var(--error-soft); color: var(--error); }
+    .badge.unseen { background: var(--warn-soft); color: var(--warn); }
+    .badge.seen { background: var(--ok-soft); color: var(--ok); }
 
     .message {
       margin: 0;
@@ -237,13 +362,15 @@
       overflow-wrap: anywhere;
     }
 
-    details {
-      border-top: 1px solid var(--border);
+    .technical-details {
+      margin-top: 14px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
       background: var(--surface-subtle);
     }
 
-    summary {
-      padding: 11px 22px;
+    .technical-details > summary {
+      padding: 9px 11px;
       color: var(--muted);
       cursor: pointer;
       font-size: 0.83rem;
@@ -255,7 +382,7 @@
       display: grid;
       grid-template-columns: repeat(2, minmax(0, 1fr));
       gap: 10px 20px;
-      padding: 2px 22px 18px;
+      padding: 4px 12px 13px;
       margin: 0;
     }
 
@@ -297,12 +424,15 @@
     @media (max-width: 650px) {
       .shell { width: min(100% - 22px, 980px); padding-top: 24px; }
       header { display: grid; }
+      .header-actions { justify-content: flex-start; }
       .toolbar { grid-template-columns: 1fr; }
-      .card-heading { display: grid; }
+      .group-summary { grid-template-columns: 1fr; padding: 15px; }
+      .group-title-row { display: grid; }
+      .group-summary-side { justify-content: space-between; }
       .badges { justify-content: flex-start; }
-      .card-body { padding: 17px 16px 15px; }
-      summary { padding-inline: 16px; }
-      .details-grid { grid-template-columns: 1fr; padding-inline: 16px; }
+      .group-content { padding: 13px; }
+      .group-actions { align-items: flex-start; flex-direction: column; }
+      .details-grid { grid-template-columns: 1fr; }
       .details-grid .wide { grid-column: auto; }
     }
   </style>
@@ -313,9 +443,12 @@
       <div>
         <p class="eyebrow">Home Assistant relay</p>
         <h1>Grafana alert history</h1>
-        <p class="subtitle">Full notification messages and delivery status, newest first.</p>
+        <p class="subtitle">Repeated alerts are grouped. Select one to expand its full history.</p>
       </div>
-      <button id="refresh" type="button">Refresh</button>
+      <div class="header-actions">
+        <button id="mark-all" type="button" hidden>✓ Mark all seen</button>
+        <button id="refresh" type="button">Refresh</button>
+      </div>
     </header>
 
     <section class="toolbar" aria-label="History filters">
@@ -344,12 +477,16 @@
 
       const endpoint = new URL("./api/notifications", window.location.href);
       const refreshButton = document.querySelector("#refresh");
+      const markAllButton = document.querySelector("#mark-all");
       const searchInput = document.querySelector("#search");
       const stateSelect = document.querySelector("#state");
       const countElement = document.querySelector("#count");
       const statusElement = document.querySelector("#status");
       const listElement = document.querySelector("#notifications");
+      const expandedGroups = new Set();
       let notifications = [];
+      let mutationInProgress = false;
+      let loadSequence = 0;
 
       const element = (tag, className, text) => {
         const node = document.createElement(tag);
@@ -384,49 +521,56 @@
         return wrapper;
       };
 
-      const renderCard = (record) => {
+      const legacyGroupKey = (record) => {
         const alert = record.alert || {};
-        const state = String(alert.state || "unknown");
-        const card = element("article", "notification");
-        card.dataset.state = state.toLowerCase();
+        return JSON.stringify([
+          alert.orgId || 0,
+          alert.ruleId || 0,
+          alert.ruleName || alert.title || alert.message || "",
+          alert.dashboardId || 0,
+          alert.panelId || 0,
+          String(alert.state || "unknown").toLowerCase(),
+          alert.tags || {},
+          (alert.evalMatches || []).map((match) => [match.metric || "", match.tags || {}])
+        ]);
+      };
 
-        const body = element("div", "card-body");
-        const heading = element("div", "card-heading");
-        const headingText = element("div");
-        headingText.append(
-          element("h2", "", alert.title || alert.ruleName || "Untitled Grafana alert"),
-          element("p", "time", formatTime(record.receivedAt))
-        );
+      const recordMatchesFilters = (record) => {
+        const alert = record.alert || {};
+        const selectedState = stateSelect.value.toLowerCase();
+        if (selectedState && String(alert.state || "unknown").toLowerCase() !== selectedState) return false;
 
-        const badges = element("div", "badges");
-        badges.append(element("span", "badge", state));
-        badges.append(element(
-          "span",
-          `badge ${record.delivered ? "delivered" : "failed"}`,
-          record.delivered ? "Delivered" : "Delivery failed"
-        ));
-        heading.append(headingText, badges);
-        body.append(heading, element("p", "message", alert.message || "No message was supplied."));
+        const query = searchInput.value.trim().toLowerCase();
+        if (!query) return true;
+        return [alert.title, alert.message, alert.ruleName, alert.state]
+          .filter(Boolean)
+          .some((value) => String(value).toLowerCase().includes(query));
+      };
 
-        let detailsImage = null;
-        const imageURL = safeURL(alert.imageUrl);
-        if (imageURL) {
-          const link = element("a", "", "Open alert image");
-          link.href = imageURL.href;
-          link.target = "_blank";
-          link.rel = "noopener noreferrer";
-          const imageDetail = element("div", "wide");
-          imageDetail.append(element("dt", "", "Image"));
-          const imageValue = element("dd");
-          imageValue.append(link);
-          imageDetail.append(imageValue);
-          detailsImage = imageDetail;
-        }
-        card.append(body);
+      const groupRecords = (records) => {
+        const byKey = new Map();
+        records.forEach((record) => {
+          const key = record.groupKey || legacyGroupKey(record);
+          if (!byKey.has(key)) byKey.set(key, { key, records: [] });
+          byKey.get(key).records.push(record);
+        });
 
-        const disclosure = element("details");
-        disclosure.append(element("summary", "", "Alert details"));
+        const groups = [...byKey.values()];
+        groups.forEach((group) => group.records.sort((left, right) =>
+          new Date(right.receivedAt).getTime() - new Date(left.receivedAt).getTime()));
+        groups.sort((left, right) =>
+          new Date(right.records[0].receivedAt).getTime() - new Date(left.records[0].receivedAt).getTime());
+        return groups;
+      };
+
+      const visibleGroups = () => groupRecords(notifications.filter(recordMatchesFilters));
+
+      const renderTechnicalDetails = (record) => {
+        const alert = record.alert || {};
+        const disclosure = element("details", "technical-details");
+        disclosure.append(element("summary", "", "Technical details"));
         const details = element("dl", "details-grid");
+
         const ruleURL = safeURL(alert.ruleUrl);
         const rule = detail("Rule", alert.ruleName || alert.ruleId);
         if (rule && ruleURL) {
@@ -439,44 +583,145 @@
           value.append(link);
         }
 
+        let imageDetail = null;
+        const imageURL = safeURL(alert.imageUrl);
+        if (imageURL) {
+          imageDetail = element("div", "wide");
+          imageDetail.append(element("dt", "", "Image"), element("dd"));
+          const imageValue = imageDetail.querySelector("dd");
+          const imageLink = element("a", "", "Open alert image");
+          imageLink.href = imageURL.href;
+          imageLink.target = "_blank";
+          imageLink.rel = "noopener noreferrer";
+          imageValue.append(imageLink);
+        }
+
         [
           rule,
-          detail("State", state),
+          detail("State", alert.state || "unknown"),
           detail("Dashboard", alert.dashboardId),
           detail("Panel", alert.panelId),
           detail("Organisation", alert.orgId),
-          detailsImage,
+          imageDetail,
           detail("Delivery error", record.deliveryError, true),
           detail("Tags", alert.tags && Object.keys(alert.tags).length ? JSON.stringify(alert.tags, null, 2) : "", true),
           detail("Evaluation matches", alert.evalMatches && alert.evalMatches.length ? JSON.stringify(alert.evalMatches, null, 2) : "", true),
           detail("History ID", record.id, true)
         ].forEach((item) => { if (item) details.append(item); });
         disclosure.append(details);
-        card.append(disclosure);
+        return disclosure;
+      };
+
+      const renderOccurrence = (record, index, total) => {
+        const alert = record.alert || {};
+        const occurrence = element("details", "occurrence");
+        occurrence.open = index === 0;
+        const occurrenceSummary = element("summary");
+        const label = element("span", "occurrence-summary-label");
+        label.append(
+          element("span", "", index === 0 ? "Latest" : `Earlier ${index + 1} of ${total}`),
+          element("span", "time", formatTime(record.receivedAt))
+        );
+        occurrenceSummary.append(label, element(
+          "span",
+          `badge ${record.delivered ? "delivered" : "failed"}`,
+          record.delivered ? "Delivered" : "Delivery failed"
+        ));
+
+        const body = element("div", "occurrence-body");
+        body.append(
+          element("p", "message", alert.message || "No message was supplied."),
+          renderTechnicalDetails(record)
+        );
+        occurrence.append(occurrenceSummary, body);
+        return occurrence;
+      };
+
+      const renderGroup = (group) => {
+        const latest = group.records[0];
+        const alert = latest.alert || {};
+        const state = String(alert.state || "unknown");
+        const unseen = group.records.filter((record) => !record.seen);
+        const card = element("details", "notification");
+        card.dataset.state = state.toLowerCase();
+        card.dataset.seen = String(unseen.length === 0);
+        card.open = expandedGroups.has(group.key);
+        card.addEventListener("toggle", () => {
+          if (card.open) expandedGroups.add(group.key);
+          else expandedGroups.delete(group.key);
+        });
+
+        const summary = element("summary", "group-summary");
+        const main = element("span", "group-summary-main");
+        const titleRow = element("span", "group-title-row");
+        const title = element("span", "group-title-block");
+        title.append(
+          element("span", "group-title", alert.title || alert.ruleName || "Untitled Grafana alert"),
+          element("span", "time", `Latest ${formatTime(latest.receivedAt)}`)
+        );
+        titleRow.append(title);
+        main.append(titleRow, element("span", "preview", alert.message || "No message was supplied."));
+
+        const side = element("span", "group-summary-side");
+        const badges = element("span", "badges");
+        badges.append(element("span", "badge", state));
+        if (group.records.length > 1) {
+          badges.append(element("span", "badge", `${group.records.length} alerts`));
+        }
+        badges.append(element(
+          "span",
+          `badge ${unseen.length ? "unseen" : "seen"}`,
+          unseen.length ? `${unseen.length} unseen` : "Seen"
+        ));
+        side.append(badges, element("span", "disclosure-icon", "›"));
+        summary.append(main, side);
+
+        const content = element("div", "group-content");
+        const actions = element("div", "group-actions");
+        actions.append(element(
+          "p",
+          "",
+          `${group.records.length} occurrence${group.records.length === 1 ? "" : "s"} in this group`
+        ));
+        if (unseen.length) {
+          const markButton = element(
+            "button",
+            "mark-seen",
+            unseen.length === 1 ? "✓ Mark seen" : `✓ Mark ${unseen.length} seen`
+          );
+          markButton.type = "button";
+          markButton.disabled = mutationInProgress;
+          markButton.addEventListener("click", () => markRecordsSeen(
+            unseen.map((record) => record.id),
+            `Marked ${unseen.length} alert${unseen.length === 1 ? "" : "s"} as seen`
+          ));
+          actions.append(markButton);
+        }
+        const occurrences = element("div", "occurrences");
+        group.records.forEach((record, index) =>
+          occurrences.append(renderOccurrence(record, index, group.records.length)));
+        content.append(actions, occurrences);
+        card.append(summary, content);
         return card;
       };
 
-      const filteredNotifications = () => {
-        const query = searchInput.value.trim().toLowerCase();
-        const state = stateSelect.value.toLowerCase();
-        return notifications.filter((record) => {
-          const alert = record.alert || {};
-          if (state && String(alert.state || "unknown").toLowerCase() !== state) return false;
-          if (!query) return true;
-          return [alert.title, alert.message, alert.ruleName, alert.state]
-            .filter(Boolean)
-            .some((value) => String(value).toLowerCase().includes(query));
-        });
-      };
-
       const render = () => {
-        const filtered = filteredNotifications();
+        const groups = visibleGroups();
+        const visibleRecordCount = groups.reduce((total, group) => total + group.records.length, 0);
+        const unseenGroups = groups.filter((group) => group.records.some((record) => !record.seen));
         listElement.replaceChildren();
-        countElement.textContent = filtered.length === notifications.length
-          ? `${notifications.length} notification${notifications.length === 1 ? "" : "s"}`
-          : `${filtered.length} of ${notifications.length} notifications`;
 
-        if (!filtered.length) {
+        const groupLabel = `${groups.length} alert group${groups.length === 1 ? "" : "s"}`;
+        const notificationLabel = `${visibleRecordCount} notification${visibleRecordCount === 1 ? "" : "s"}`;
+        countElement.textContent = `${groupLabel} · ${notificationLabel}`;
+
+        markAllButton.hidden = unseenGroups.length <= 1;
+        markAllButton.disabled = mutationInProgress;
+        if (!markAllButton.hidden) {
+          markAllButton.textContent = `✓ Mark all ${unseenGroups.length} visible groups seen`;
+        }
+
+        if (!groups.length) {
           const empty = element("div", "empty");
           empty.append(
             element("strong", "", notifications.length ? "No alerts match these filters" : "No notifications yet"),
@@ -487,12 +732,49 @@
           listElement.append(empty);
           return;
         }
-        filtered.forEach((record) => listElement.append(renderCard(record)));
+        groups.forEach((group) => listElement.append(renderGroup(group)));
+      };
+
+      const markRecordsSeen = async (ids, successMessage) => {
+        const selectedIDs = [...new Set(ids)].filter(Boolean);
+        if (!selectedIDs.length || mutationInProgress) return;
+
+        mutationInProgress = true;
+        loadSequence += 1;
+        refreshButton.disabled = true;
+        render();
+        statusElement.dataset.error = "false";
+        statusElement.textContent = "Saving…";
+        try {
+          const response = await fetch(endpoint, {
+            method: "PATCH",
+            headers: {
+              "Accept": "application/json",
+              "Content-Type": "application/json"
+            },
+            credentials: "same-origin",
+            body: JSON.stringify({ ids: selectedIDs })
+          });
+          if (!response.ok) throw new Error(`Could not mark alerts seen (${response.status})`);
+          const selected = new Set(selectedIDs);
+          notifications.forEach((record) => {
+            if (selected.has(record.id)) record.seen = true;
+          });
+          statusElement.textContent = successMessage;
+        } catch (error) {
+          statusElement.dataset.error = "true";
+          statusElement.textContent = error instanceof Error ? error.message : "Could not save seen state";
+        } finally {
+          mutationInProgress = false;
+          refreshButton.disabled = false;
+          render();
+        }
       };
 
       const updateStates = () => {
         const selected = stateSelect.value;
-        const states = [...new Set(notifications.map((record) => String(record.alert?.state || "unknown")))]
+        const states = [...new Set(notifications.map((record) =>
+          String((record.alert || {}).state || "unknown")))]
           .sort((left, right) => left.localeCompare(right));
         stateSelect.replaceChildren(new Option("All states", ""));
         states.forEach((state) => stateSelect.add(new Option(state, state)));
@@ -500,27 +782,46 @@
       };
 
       const load = async () => {
+        if (mutationInProgress) return;
+        const sequence = ++loadSequence;
         refreshButton.disabled = true;
+        markAllButton.disabled = true;
         statusElement.dataset.error = "false";
         statusElement.textContent = "Refreshing…";
         try {
-          const response = await fetch(endpoint, { headers: { "Accept": "application/json" }, cache: "no-store" });
+          const response = await fetch(endpoint, {
+            headers: { "Accept": "application/json" },
+            credentials: "same-origin",
+            cache: "no-store"
+          });
           if (!response.ok) throw new Error(`History request failed (${response.status})`);
           const payload = await response.json();
+          if (sequence !== loadSequence || mutationInProgress) return;
           notifications = Array.isArray(payload.notifications) ? payload.notifications : [];
           updateStates();
           render();
           statusElement.textContent = `Updated ${new Intl.DateTimeFormat(undefined, { timeStyle: "short" }).format(new Date())}`;
         } catch (error) {
+          if (sequence !== loadSequence || mutationInProgress) return;
           statusElement.dataset.error = "true";
           statusElement.textContent = error instanceof Error ? error.message : "Could not load history";
           if (!notifications.length) render();
         } finally {
-          refreshButton.disabled = false;
+          if (sequence === loadSequence && !mutationInProgress) {
+            refreshButton.disabled = false;
+            markAllButton.disabled = false;
+          }
         }
       };
 
       refreshButton.addEventListener("click", load);
+      markAllButton.addEventListener("click", () => {
+        const unseenGroups = visibleGroups().filter((group) =>
+          group.records.some((record) => !record.seen));
+        const ids = unseenGroups.flatMap((group) =>
+          group.records.filter((record) => !record.seen).map((record) => record.id));
+        markRecordsSeen(ids, `Marked ${unseenGroups.length} visible alert groups as seen`);
+      });
       searchInput.addEventListener("input", render);
       stateSelect.addEventListener("change", render);
       load();

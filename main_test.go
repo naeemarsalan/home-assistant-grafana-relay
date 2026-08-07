@@ -87,6 +87,9 @@ func TestWebhookDeliversAndAppearsInHistory(t *testing.T) {
 	if !record.Delivered || record.Alert.Message != "Humidity has remained above 75% for 10 minutes.\nCheck the dehumidifier." {
 		t.Fatalf("history record = %#v", record)
 	}
+	if record.Seen || record.GroupKey == "" {
+		t.Fatalf("new history record seen/group state = %#v", record)
+	}
 	if record.Alert.EvalMatches[0].Value != float64(76.4) {
 		t.Errorf("evaluation value = %#v", record.Alert.EvalMatches[0].Value)
 	}
@@ -134,13 +137,81 @@ func TestHistoryPageAndAuthentication(t *testing.T) {
 	if authorized.Code != http.StatusOK {
 		t.Fatalf("authorized GET / status = %d, want 200", authorized.Code)
 	}
-	if !strings.Contains(authorized.Body.String(), "Grafana alert history") || !strings.Contains(authorized.Body.String(), "white-space: pre-wrap") {
-		t.Error("history page does not contain expected full-message UI")
+	if !strings.Contains(authorized.Body.String(), "Grafana alert history") ||
+		!strings.Contains(authorized.Body.String(), "Mark all seen") ||
+		!strings.Contains(authorized.Body.String(), "groupRecords") {
+		t.Error("history page does not contain expected grouped/seen UI")
 	}
 
 	apiUnauthorized := performRequest(app.routes(), http.MethodGet, "/api/notifications", "", nil)
 	if apiUnauthorized.Code != http.StatusUnauthorized {
 		t.Fatalf("unauthorized API status = %d, want 401", apiUnauthorized.Code)
+	}
+	mutationUnauthorized := performRequest(app.routes(), http.MethodPatch, "/api/notifications", `{"all":true}`, jsonRequestHeader)
+	if mutationUnauthorized.Code != http.StatusUnauthorized {
+		t.Fatalf("unauthorized mutation status = %d, want 401", mutationUnauthorized.Code)
+	}
+}
+
+func TestSeenStateAPIUpdatesSelectedAndAllNotifications(t *testing.T) {
+	app := newTestApplication(t, "http://127.0.0.1")
+	for index, id := range []string{"one", "two", "three"} {
+		if err := app.history.Add(NotificationRecord{
+			ID:         id,
+			ReceivedAt: time.Date(2026, time.August, 7, 12, index, 0, 0, time.UTC),
+			Alert:      GrafanaJson{RuleID: int64(index + 1)},
+		}); err != nil {
+			t.Fatalf("Add(%s) error = %v", id, err)
+		}
+	}
+
+	selected := performRequest(app.routes(), http.MethodPatch, "/api/notifications", `{"ids":["one","two"]}`, jsonRequestHeader)
+	if selected.Code != http.StatusOK || !strings.Contains(selected.Body.String(), `"updated":2`) {
+		t.Fatalf("selected PATCH response = %d %s", selected.Code, selected.Body.String())
+	}
+	records := app.history.List(10)
+	seenByID := make(map[string]bool, len(records))
+	for _, record := range records {
+		seenByID[record.ID] = record.Seen
+	}
+	if !seenByID["one"] || !seenByID["two"] || seenByID["three"] {
+		t.Fatalf("seen state after selected update = %#v", seenByID)
+	}
+
+	all := performRequest(app.routes(), http.MethodPatch, "/api/notifications", `{"all":true}`, jsonRequestHeader)
+	if all.Code != http.StatusOK || !strings.Contains(all.Body.String(), `"updated":1`) {
+		t.Fatalf("all PATCH response = %d %s", all.Code, all.Body.String())
+	}
+	for _, record := range app.history.List(10) {
+		if !record.Seen {
+			t.Fatalf("record %q remains unseen", record.ID)
+		}
+	}
+}
+
+func TestSeenStateAPIRejectsInvalidRequests(t *testing.T) {
+	app := newTestApplication(t, "http://127.0.0.1")
+	tests := []struct {
+		name       string
+		body       string
+		headers    func(*http.Request)
+		wantStatus int
+	}{
+		{name: "missing content type", body: `{"all":true}`, wantStatus: http.StatusUnsupportedMediaType},
+		{name: "invalid JSON", body: `{`, headers: jsonRequestHeader, wantStatus: http.StatusBadRequest},
+		{name: "unknown field", body: `{"unknown":true}`, headers: jsonRequestHeader, wantStatus: http.StatusBadRequest},
+		{name: "empty operation", body: `{}`, headers: jsonRequestHeader, wantStatus: http.StatusBadRequest},
+		{name: "ids and all", body: `{"ids":["one"],"all":true}`, headers: jsonRequestHeader, wantStatus: http.StatusBadRequest},
+		{name: "empty id", body: `{"ids":[""]}`, headers: jsonRequestHeader, wantStatus: http.StatusBadRequest},
+		{name: "trailing JSON", body: `{"all":true}{}`, headers: jsonRequestHeader, wantStatus: http.StatusBadRequest},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			response := performRequest(app.routes(), http.MethodPatch, "/api/notifications", test.body, test.headers)
+			if response.Code != test.wantStatus {
+				t.Fatalf("status = %d, want %d; body = %s", response.Code, test.wantStatus, response.Body.String())
+			}
+		})
 	}
 }
 
@@ -268,6 +339,10 @@ func performRequest(handler http.Handler, method, target, body string, configure
 
 func webhookSecretHeader(req *http.Request) {
 	req.Header.Set("X-Webhook-Secret", "webhook-password")
+}
+
+func jsonRequestHeader(req *http.Request) {
+	req.Header.Set("Content-Type", "application/json")
 }
 
 func replaceEnvironment(t *testing.T, name, value string, set bool) {

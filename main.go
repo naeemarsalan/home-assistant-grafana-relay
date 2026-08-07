@@ -11,6 +11,7 @@ import (
 	"io"
 	"io/ioutil"
 	"log"
+	"mime"
 	"net"
 	"net/http"
 	"os"
@@ -24,7 +25,8 @@ const (
 	defaultListenHost   = "0.0.0.0"
 	defaultListenPort   = "12000"
 	defaultHistoryLimit = 200
-	maxWebhookBodySize  = 1 << 20 // 1 MiB
+	maxWebhookBodySize  = 1 << 20  // 1 MiB
+	maxSeenBodySize     = 64 << 10 // 64 KiB
 )
 
 type config struct {
@@ -158,12 +160,16 @@ func (a *application) handleRoot(rw http.ResponseWriter, req *http.Request) {
 }
 
 func (a *application) handleNotifications(rw http.ResponseWriter, req *http.Request) {
-	if req.Method != http.MethodGet && req.Method != http.MethodHead {
-		rw.Header().Set("Allow", "GET, HEAD")
+	if req.Method != http.MethodGet && req.Method != http.MethodHead && req.Method != http.MethodPatch {
+		rw.Header().Set("Allow", "GET, HEAD, PATCH")
 		http.Error(rw, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 	if !a.authorizeWebUI(rw, req) {
+		return
+	}
+	if req.Method == http.MethodPatch {
+		a.handleMarkSeen(rw, req)
 		return
 	}
 
@@ -193,6 +199,59 @@ func (a *application) handleNotifications(rw http.ResponseWriter, req *http.Requ
 		return
 	}
 	writeJSON(rw, http.StatusOK, response)
+}
+
+func (a *application) handleMarkSeen(rw http.ResponseWriter, req *http.Request) {
+	mediaType, _, err := mime.ParseMediaType(req.Header.Get("Content-Type"))
+	if err != nil || mediaType != "application/json" {
+		http.Error(rw, "Content-Type must be application/json", http.StatusUnsupportedMediaType)
+		return
+	}
+
+	defer req.Body.Close()
+	body, err := ioutil.ReadAll(io.LimitReader(req.Body, maxSeenBodySize+1))
+	if err != nil {
+		http.Error(rw, "could not read seen-state request", http.StatusBadRequest)
+		return
+	}
+	if len(body) > maxSeenBodySize {
+		http.Error(rw, "seen-state request is too large", http.StatusRequestEntityTooLarge)
+		return
+	}
+
+	var request struct {
+		IDs []string `json:"ids"`
+		All bool     `json:"all"`
+	}
+	decoder := json.NewDecoder(bytes.NewReader(body))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&request); err != nil {
+		http.Error(rw, "invalid seen-state JSON", http.StatusBadRequest)
+		return
+	}
+	if err := decoder.Decode(&struct{}{}); err != io.EOF {
+		http.Error(rw, "request body must contain one JSON object", http.StatusBadRequest)
+		return
+	}
+	if request.All == (len(request.IDs) > 0) {
+		http.Error(rw, "provide either ids or all=true", http.StatusBadRequest)
+		return
+	}
+	for _, id := range request.IDs {
+		if strings.TrimSpace(id) == "" {
+			http.Error(rw, "notification ids cannot be empty", http.StatusBadRequest)
+			return
+		}
+	}
+
+	updated, err := a.history.MarkSeen(request.IDs, request.All)
+	if err != nil {
+		log.Printf("Could not persist seen state: %v", err)
+		http.Error(rw, "could not persist seen state", http.StatusInternalServerError)
+		return
+	}
+	rw.Header().Set("Cache-Control", "no-store")
+	writeJSON(rw, http.StatusOK, map[string]int{"updated": updated})
 }
 
 func (a *application) handleHealth(rw http.ResponseWriter, req *http.Request) {
